@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Palm Rejection Test V2</title>
+    <style>
+        body { margin: 0; padding: 20px; font-family: sans-serif; }
+        #drawing-canvas {
+            width: 100%; height: 400px; background: white;
+            border: 2px solid #333; touch-action: none; cursor: crosshair;
+        }
+        #status { color: green; font-weight: bold; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <h2>Palm Rejection Drawing Pad V2</h2>
+    <div id="status">Status: Ready</div>
+    <canvas id="drawing-canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('drawing-canvas');
+        const ctx = canvas.getContext('2d');
+        const status = document.getElementById('status');
+        
+        let isDrawing = false;
+        let lastX = 0;
+        let lastY = 0;
+        let activePenId = null; // This locks onto the stylus so the palm can't interrupt it
+
+        function resizeCanvas() {
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            ctx.strokeStyle = 'blue';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+        }
+        window.addEventListener('load', resizeCanvas);
+        window.addEventListener('resize', resizeCanvas);
+
+        canvas.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+
+            // 1. If we are ALREADY writing with the stylus, ignore this new touch completely!
+            // This means if the stylus is down, and the palm hits the screen, the palm is ignored.
+            if (activePenId !== null && e.pointerId !== activePenId) {
+                status.innerText = "Status: Palm touched, but still writing with stylus!";
+                return;
+            }
+
+            // 2. If this is a new touch, check if it's a palm or a stylus
+            let isPalm = false;
+            
+            // If it's a real pen (active stylus), it's never a palm
+            if (e.pointerType === 'pen') {
+                isPalm = false;
+            } 
+            // If it registers as a touch (capacitive stylus or finger), check the size
+            else if (e.pointerType === 'touch' && e.width > 5) {
+                isPalm = true;
+            }
+
+            // 3. If it's a palm, don't start drawing
+            if (isPalm) {
+                status.innerText = "Status: Palm Detected! Ignoring.";
+                return;
+            }
+
+            // 4. If it's the stylus, LOCK onto this pointer ID and start drawing!
+            activePenId = e.pointerId;
+            isDrawing = true;
+            status.innerText = "Status: Drawing with stylus.";
+            
+            const rect = canvas.getBoundingClientRect();
+            lastX = e.clientX - rect.left;
+            lastY = e.clientY - rect.top;
+        });
+
+        canvas.addEventListener('pointermove', (e) => {
+            e.preventDefault();
+            
+            // If this movement isn't from our locked stylus, ignore it!
+            if (e.pointerId !== activePenId) return;
+
+            if (!isDrawing) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const currentX = e.clientX - rect.left;
+            const currentY = e.clientY - rect.top;
+            
+            ctx.beginPath();
+            ctx.moveTo(lastX, lastY);
+            ctx.lineTo(currentX, currentY);
+            ctx.stroke();
+            
+            lastX = currentX;
+            lastY = currentY;
+        });
+
+        function endPointer(e) {
+            e.preventDefault();
+            
+            // Only stop drawing if the STYLUS lifts up. 
+            // If a palm lifts up, we don't care, we keep drawing.
+            if (e.pointerId === activePenId) {
+                isDrawing = false;
+                activePenId = null; // Release the lock
+                status.innerText = "Status: Ready";
+            }
+        }
+
+        canvas.addEventListener('pointerup', endPointer);
+        canvas.addEventListener('pointercancel', endPointer);
+        canvas.addEventListener('pointerleave', endPointer);
+    </script>
+</body>
+</html>
